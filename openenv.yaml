@@ -1,0 +1,120 @@
+name: content-moderation-openenv
+version: "1.0.0"
+description: >
+  A real-world content moderation environment where AI agents must review,
+  classify, and take enforcement actions on user-generated content. Simulates
+  the decision-making pipeline used by platform trust & safety teams.
+
+author: hackathon-team
+tags:
+  - openenv
+  - content-moderation
+  - trust-and-safety
+  - nlp
+  - classification
+
+environment:
+  type: text
+  stateful: true
+  max_episode_steps: 8
+
+action_space:
+  type: structured
+  description: >
+    Agent submits a list of moderation decisions, one per content item in the queue.
+  fields:
+    - name: content_id
+      type: string
+      description: ID of the content item being moderated
+    - name: violation_type
+      type: enum
+      values: [hate_speech, harassment, spam, misinformation, violence, safe]
+      description: Detected violation category
+    - name: action
+      type: enum
+      values: [approve, remove, warn, escalate, shadow_ban]
+      description: Enforcement action to take
+    - name: confidence
+      type: float
+      range: [0.0, 1.0]
+      description: Agent confidence in the decision
+    - name: reason
+      type: string
+      optional: true
+      description: Optional text explanation for the decision
+
+observation_space:
+  type: structured
+  description: >
+    A queue of content items to moderate, along with current session state.
+  fields:
+    - name: content_queue
+      type: list[ContentItem]
+      description: List of content items awaiting moderation decision
+    - name: step
+      type: int
+      description: Current step in the episode
+    - name: max_steps
+      type: int
+      description: Total steps in the episode
+    - name: task
+      type: string
+      description: Active task name
+    - name: difficulty
+      type: string
+      description: Task difficulty level
+    - name: score_so_far
+      type: float
+      description: Running average score for this episode
+    - name: feedback
+      type: string
+      description: Feedback from previous step decisions
+
+tasks:
+  - name: binary_classify
+    difficulty: easy
+    description: >
+      Binary safe/unsafe classification. Agent must identify whether each
+      content item violates platform policy and approve or remove it.
+    max_steps: 5
+    score_range: [0.0, 1.0]
+    success_threshold: 0.7
+
+  - name: multi_label_classify
+    difficulty: medium
+    description: >
+      Multi-class violation classification. Agent must identify the specific
+      category of violation (hate_speech, harassment, spam, misinformation,
+      violence) and take the appropriate action for that category.
+    max_steps: 6
+    score_range: [0.0, 1.0]
+    success_threshold: 0.65
+
+  - name: policy_enforcement
+    difficulty: hard
+    description: >
+      Full policy enforcement pipeline. Agent must classify violations AND
+      select the contextually correct enforcement action based on content
+      severity, author history (clean/warned/repeat_offender), and platform
+      context (comment/post/dm). Edge cases and borderline content included.
+      Reasoning text required for full score.
+    max_steps: 8
+    score_range: [0.0, 1.0]
+    success_threshold: 0.6
+
+endpoints:
+  reset: POST /reset
+  step: POST /step
+  state: GET /state
+  tasks: GET /tasks
+  health: GET /health
+
+reward:
+  type: continuous
+  range: [0.0, 1.0]
+  description: >
+    Per-step reward is the average score across all moderation decisions in
+    that step. Score depends on task: binary correctness (easy), label
+    accuracy + action (medium), full policy match including context (hard).
+    Rewards partial progress — wrong category but correct safe/unsafe split
+    receives partial credit. False negatives on severe violations penalized.
